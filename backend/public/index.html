@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Collaboration</title>
+</head>
+<style>
+    #chatContainer {
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        width: 300px;
+        background: #222;
+        color: white;
+        padding: 10px;
+        border-radius: 8px;
+    }
+
+    #chatBox {
+        height: 200px;
+        overflow-y: auto;
+        padding: 5px;
+        border-bottom: 1px solid white;
+    }
+
+    #chatInput {
+        width: 100%;
+        padding: 8px;
+        border: none;
+        border-radius: 4px;
+    }
+
+    #userListContainer {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        width: 200px;
+        background: #333;
+        color: white;
+        padding: 10px;
+        border-radius: 8px;
+    }
+
+    #userList {
+        list-style: none;
+        padding: 0;
+    }
+
+    #userList li {
+        padding: 5px;
+        border-bottom: 1px solid gray;
+    }
+</style>
+
+<body>
+    <h1>Collaborative Code Editor</h1>
+    <textarea id="codeArea" rows="10" cols="50"></textarea>
+    <div id="remoteCursor" style="position: absolute; width: 10px; height: 10px; background: red; border-radius: 50%;">
+    </div>
+    <div id="userListContainer">
+        <h4>Active Users</h4>
+        <ul id="userList"></ul>
+    </div>
+
+    <div id="chatContainer">
+        <div id="chatBox"></div>
+        <input type="text" id="chatInput" placeholder="Type a message..." />
+    </div>
+
+</body>
+<script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+<script>
+    const socket = io('http://localhost:5000');
+    const roomId = "test-room"; // Change to dynamic ID in real app
+
+    socket.emit('joinRoom', roomId);
+
+    const codeArea = document.getElementById('codeArea');
+
+    // Listen for changes
+    codeArea.addEventListener('input', () => {
+        socket.emit('codeChange', { roomId, code: codeArea.value });
+    });
+
+    // Receive updates
+    socket.on('codeUpdate', (newCode) => {
+        codeArea.value = newCode;
+    });
+    socket.on('updateCursor', (cursor) => {
+        console.log('📍 Received cursor update:', cursor);  // Debugging
+        const cursorDiv = document.getElementById('remoteCursor');
+        cursorDiv.style.left = cursor.x + 'px';
+        cursorDiv.style.top = cursor.y + 'px';
+    });
+    socket.on('updateUsers', (users) => {
+        userList.innerHTML = ''; // Clear old list
+        users.forEach(user => {
+            const li = document.createElement('li');
+            li.innerText = user.name;
+            userList.appendChild(li);
+        });
+    });
+
+    codeArea.addEventListener('mousemove', (e) => {
+        const cursor = { x: e.clientX, y: e.clientY };
+        console.log('🖱️ Sending cursor position:', cursor);  // Debugging
+        socket.emit('cursorMove', { roomId, cursor });
+    });
+
+    const chatInput = document.getElementById('chatInput');
+    const chatBox = document.getElementById('chatBox');
+
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && chatInput.value.trim() !== '') {
+            const message = {
+                userId: socket.id,
+                text: chatInput.value.trim(),
+            };
+
+            socket.emit('chatMessage', { roomId, message });
+            chatInput.value = ''; // Clear input field
+        }
+    });
+
+    const userList = document.getElementById('userList');
+    const username = prompt('Enter your name:'); // Get username
+
+    // Listen for incoming messages
+    socket.on('receiveMessage', (message,username) => {
+        const messageElement = document.createElement('div');
+        console.log(username);
+        
+        if (message.userId === socket.id) {
+            messageElement.style.textAlign = 'right'; // Align sender's message to right
+            messageElement.style.color = 'lightgreen'; // Make it stand out
+        }
+
+        messageElement.innerHTML = `<strong>${message.userId.substring(0, 5)}:</strong> ${message.text}`;
+        chatBox.appendChild(messageElement);
+        chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll
+    });
+
+
+    socket.emit('joinRoom', roomId, username);
+
+    socket.on('connect', () => {
+        socket.emit('joinRoom', roomId, username);
+    });
+
+
+</script>
+
+</html>
